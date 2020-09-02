@@ -1,0 +1,269 @@
+---
+title: "Reproducible Research (Course Project 2)"
+author: "Ruzaini Amiraa Roslan"
+date: "8/31/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Examining the United States Weather Data and Its Impact on the Country's Public and Economic Sector
+
+## Introduction
+This report is written in part of the Course Project for the Reproducible Research course on Coursera by Johns Hopkins University.
+
+Storms and other severe weather events can cause both public health and economic problems for communities and municipalities. Many severe events can result in fatalities, injuries, and property damage, and preventing such outcomes to the extent possible is a key concern. 
+
+This project involves exploring the U.S. National Oceanic and Atmospheric Administration's (NOAA) storm database. This database tracks characteristics of major storms and weather events in the United States, including when and where they occur, as well as estimates of any fatalities, injuries, and property damage.
+
+## Synopsis
+The analysis of the data is conducted to answer the following questions:
+
+1. Across the United States, which types of events (as indicated in the `EVTYPE` variable) are most harmful with respect to population health?
+2. Across the United States, which types of events have the greatest economic consequences?
+
+The selected packages ("dplyr" and "ggplot") are loaded into the workspace before the data is loaded as well. Some data cleaning is conducted, where significant variables for the analysis are selected, any existing missing values are handled, and some variables are transformed so that the data is less complex.
+
+The **Results** section is divided into two parts: one for each research question. In each section, weather events are grouped together, and the total number of fatalities and injuries, and property and crop damages are calculated, respectively, in each section. Stacked bar plots are created in each section depicting the values calculated and displayed in tables at each section.
+
+## Data Processing
+### Loading packages and data
+The packages included in this analysis are dplyr for data cleaning and ggplot2 for data visualization.
+
+```{r echo=TRUE}
+if(!require("dplyr")){
+    install.packages("dplyr")
+}
+
+if(!require("ggplot2")){
+  install.packages("ggplot2")
+}
+
+library(dplyr)
+library(ggplot2)
+```
+
+The data is downloaded from [this link](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2). The data is a comma-separated-value (csv) file compressed via the bzip2 algorithm to reduce its size. After the data is loaded, the structure and dimension of the data is inspected.
+
+```{r echo=TRUE}
+df <- read.csv(bzfile("repdata_data_StormData.csv.bz2"), header = TRUE)
+
+# Structure of data
+str(df)
+
+# Dimension of data
+dim(df)
+```
+
+### Extracting selected variables
+Only selected variables are used in the analysis, and they are:
+
+* `FATALITIES` - approximate number of deaths
+* `INJURIES` - approximate number of injuries
+* `PROPDMG` - approximate property damage
+* `PROPDMGEXP` - property damage value
+* `CROPDMG` - approximate crop damages
+* `CROPDMGEXP` - crop damage value
+* `EVTYPE` - weather event
+
+These variables are selected using the `select()` function from dplyr.
+
+```{r echo=TRUE}
+mydata <- select(df, FATALITIES, INJURIES, PROPDMG, PROPDMGEXP, CROPDMG, CROPDMGEXP, EVTYPE)
+head(mydata)
+```
+
+### Checking for missing values
+To ensure a complete and thorough analysis, any missing values should be handled with care. The following code checks for any missing values.
+
+```{r echo=TRUE}
+sapply(mydata, function(x) sum(is.na(x)))
+```
+
+Based on the output, no missing values are recorded in the data.
+
+### Transforming variables
+Some variables contain duplicate values. It is vital to transform them not only to standardize the data, but also to reduce the complexity of the data.
+
+#### Transforming `EVTYPE`
+The target variable `EVTYPE` contains the type of weather events. According to the output of the code below, there are 985 unique weather events listed in the data.
+
+```{r echo=TRUE}
+length(unique(mydata$EVTYPE))
+```
+
+Some of them can be categorized into one weather event (i.e. `MARINE HIGH WIND` AND `MARINE STRONG WIND` can be grouped together as `WIND`). The following coding is used to transform the variable `EVTYPE` by grouping together similar weather events.
+
+```{r echo=TRUE}
+#Ccreate a new variable `EVENT` to transform the variable into groups
+mydata$EVENT <- "OTHER"
+
+# Group by keyword in `EVTYPE`
+mydata$EVENT[grep("HAIL", mydata$EVTYPE, ignore.case = TRUE)] <- "HAIL"
+mydata$EVENT[grep("HEAT", mydata$EVTYPE, ignore.case = TRUE)] <- "HEAT"
+mydata$EVENT[grep("FLOOD", mydata$EVTYPE, ignore.case = TRUE)] <- "FLOOD"
+mydata$EVENT[grep("WIND", mydata$EVTYPE, ignore.case = TRUE)] <- "WIND"
+mydata$EVENT[grep("STORM", mydata$EVTYPE, ignore.case = TRUE)] <- "STORM"
+mydata$EVENT[grep("SNOW", mydata$EVTYPE, ignore.case = TRUE)] <- "SNOW"
+mydata$EVENT[grep("TORNADO", mydata$EVTYPE, ignore.case = TRUE)] <- "TORNADO"
+mydata$EVENT[grep("WINTER", mydata$EVTYPE, ignore.case = TRUE)] <- "WINTER"
+mydata$EVENT[grep("RAIN", mydata$EVTYPE, ignore.case = TRUE)] <- "RAIN"
+
+# Check the variable
+table(mydata$EVENT)
+```
+
+#### Transforming `PROPDMGEXP` AND `CROPDMGEXP`
+The variables `PROPDMGEXP` and `CROPDMGEXP` contains the unit property and crop damages, respectively, in dollars.
+
+```{r echo=TRUE}
+table(mydata$PROPDMGEXP)
+table(mydata$CROPDMGEXP)
+```
+
+`K` and `k` represent values in thousand dollars, `M` and `m` represent million dollars, and `B` represent billion dollars. Similar units are grouped together, whereas `NA`s are considered as normal dollar values.
+
+```{r echo=TRUE}
+# Convert to character type
+mydata$PROPDMGEXP <- as.character(mydata$PROPDMGEXP)
+
+# NA's considered as dollars
+mydata$PROPDMGEXP[is.na(mydata$PROPDMGEXP)] <- 0 
+
+# Everything exept K,M,B is dollar
+mydata$PROPDMGEXP[!grepl("K|M|B", mydata$PROPDMGEXP, ignore.case = TRUE)] <- 0 
+
+# Change values in the `PROPDMGEXP` variable
+mydata$PROPDMGEXP[grep("K", mydata$PROPDMGEXP, ignore.case = TRUE)] <- "3"
+mydata$PROPDMGEXP[grep("M", mydata$PROPDMGEXP, ignore.case = TRUE)] <- "6"
+mydata$PROPDMGEXP[grep("B", mydata$PROPDMGEXP, ignore.case = TRUE)] <- "9"
+mydata$PROPDMGEXP <- as.numeric(as.character(mydata$PROPDMGEXP))
+
+# Create new variable where the actual property damage value is calculated
+mydata$property.damage <- mydata$PROPDMG * 10^mydata$PROPDMGEXP
+
+# Look at first ten (sorted) property damage values
+sort(table(mydata$property.damage), decreasing = TRUE)[1:10]
+```
+
+```{r echo=TRUE}
+# Do the same with `CROPDMGEXP`
+mydata$CROPDMGEXP <- as.character(mydata$CROPDMGEXP)
+mydata$CROPDMGEXP[is.na(mydata$CROPDMGEXP)] <- 0
+mydata$CROPDMGEXP[!grepl("K|M|B", mydata$CROPDMGEXP, ignore.case = TRUE)] <- 0
+mydata$CROPDMGEXP[grep("K", mydata$CROPDMGEXP, ignore.case = TRUE)] <- "3"
+mydata$CROPDMGEXP[grep("M", mydata$CROPDMGEXP, ignore.case = TRUE)] <- "6"
+mydata$CROPDMGEXP[grep("B", mydata$CROPDMGEXP, ignore.case = TRUE)] <- "9"
+mydata$CROPDMGEXP <- as.numeric(as.character(mydata$CROPDMGEXP))
+mydata$crop.damage <- mydata$CROPDMG * 10^mydata$CROPDMGEXP
+sort(table(mydata$crop.damage), decreasing = TRUE)[1:10]
+```
+
+##  Results
+This section shows the analysis conducted and the results to answer the research questions.
+
+### 1. Across the United States, which types of events (as indicated in the `EVTYPE` variable) are most harmful with respect to population health?
+#### Total number of fatalities and injuries based on weather event
+
+```{r echo=TRUE}
+fatal.injury <- mydata %>% 
+  group_by(EVENT) %>% 
+  summarize(Total = sum(FATALITIES + INJURIES, na.rm = TRUE)) %>% 
+  mutate(Percent = round(Total/sum(Total) * 100, 3), 
+         Type = rep("Fatalities and Injuries"))
+fatal.injury %>% arrange(desc(Total))
+```
+
+The table shows the total number of fatalities and injuries suffered by the population based on weather events. Based on the table, it is shown that fatalities and injuries caused by tornado-related events are the highest, making up 62.3% of the data, whereas rain-related events caused the least amount of fatalities and injuries, making up less than 0.3% of the data. This is also shown in the plot below. The values at each bar are the total counts on top and the percentage at the bottom.
+
+#### Total number of fatalities based on weather event
+
+```{r echo=TRUE}
+fatalities <- mydata %>% 
+  group_by(EVENT) %>% 
+  summarize(Total = sum(FATALITIES, na.rm = TRUE)) %>% 
+  mutate(Percent = round(Total/sum(Total) * 100, 3), 
+         Type = rep("Fatalities"))
+fatalities %>% arrange(desc(Total))
+```
+
+The second table shows the number and percentage of fatalaties based on each weather events. Similar to the earlier table, fatalities caused by tornado-related events are the highest, making up 37.4% percent of the data. But this time, hail-related events caused the least amount of fatality, with less that 0.1% of the fatalities are caused by it.
+
+#### Total number of injuries based on weather event
+
+```{r echo=TRUE}
+injuries <- mydata %>% 
+  group_by(EVENT) %>% 
+  summarize(Total = sum(INJURIES, na.rm = TRUE)) %>% 
+  mutate(Percent = round(Total/sum(Total) * 100, 3), 
+         Type = rep("Injuries"))
+injuries %>% arrange(desc(Total))
+```
+
+This third table, on the other hand, details the number and percentage of injuries caused by weather events. Again, tornado-related events top the list, and rain-related events caused the least amount of injury.
+
+All of the results are also shown in the bar plots below. As shown in the plot, the number of fatalities is not as notable compared to injuries.
+
+```{r echo=TRUE}
+combined.plot <- rbind(fatal.injury, fatalities, injuries)
+
+ggplot(combined.plot, aes(x = EVENT, y = Total, fill = Type)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(x = "Weather Events", title = "Total Number of Fatalities and Injuries", subtitle = "Based on Weather Events")
+```
+
+### 2. Across the United States, which types of events have the greatest economic consequences?
+#### Total number of property and crop damages based on weather events
+
+```{r echo=TRUE}
+prop.crop <- mydata %>% 
+  group_by(EVENT) %>% 
+  summarize(Total = sum(property.damage + crop.damage, na.rm = TRUE)) %>% 
+  mutate(Percent = round(Total / sum(Total) * 100, 3), 
+         Type = rep("Property and Crop Damages"))
+prop.crop %>% arrange(desc(Total))
+```
+
+The table above shows the total amount of property and crop damages caused by each weather event. Miscellaneous weather events dominated the list, with nearly 50% of the damages are caused by them. On the other hand, winter-related events caused the least amount of damage, making up less than 0.1% of the data.
+
+#### Total number of property damages based on weather events
+
+```{r echo=TRUE}
+property <- mydata %>% 
+  group_by(EVENT) %>% 
+  summarize(Total = sum(property.damage, na.rm = TRUE)) %>% 
+  mutate(Percent = round(Total / sum(Total) * 100, 3), 
+         Type = rep("Property Damage"))
+property %>% arrange(desc(Total))
+```
+
+This table shows the amount of property damages caused by each weather event. Based on the table above, nearly 30% of the property damages suffered in the US is caused by tornado-related events, while heat-related events make up 0.03% of the total property damages suffered by the country.
+
+#### Total number of crop damages based on weather events
+
+```{r echo=TRUE}
+crop <- mydata %>% 
+  group_by(EVENT) %>% 
+  summarize(Total = sum(crop.damage, na.rm = TRUE)) %>% 
+  mutate(Percent = round(Total / sum(Total) * 100, 3), 
+         Type = rep("Crop Damage"))
+crop %>% arrange(desc(Total))
+```
+
+Based on the third table above, which shows the amount of crop damages suffered by the US, miscellaneous events make up nearly half of the total damages. Winter-related events caused the least amount of crop damage (less than 0.1%). We can see that this table is similar to the first table shown in this section.
+
+The bar plot below shows the amount and distribution of the property and crop damages of each weather event. As shown in the plot, crop damages are not as prominent as property damages.
+
+```{r echo=TRUE}
+combined.plot2 <- rbind(prop.crop, property, crop)
+
+ggplot(combined.plot2, aes(x = EVENT, y = Total/1000000, fill = Type)) +
+  geom_bar(stat = "identity") + 
+  coord_flip() +
+  labs(x = "Weather Events", y = "Total", 
+       title = "Total Amount of Property and Crop Damages", 
+       subtitle = "Based on Weather Events")
+```
